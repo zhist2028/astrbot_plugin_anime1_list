@@ -203,7 +203,7 @@ class Anime1ListPlugin(Star):
 
     @filter.llm_tool(name="get_watch_url")
     async def get_watch_url(self, event: AstrMessageEvent, anime_id: int) -> str:
-        """获取番剧观看链接。
+        """通过id获取anime1观看地址。
 
         Args:
             anime_id(number): 番剧ID
