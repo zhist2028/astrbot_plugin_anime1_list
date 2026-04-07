@@ -174,7 +174,7 @@ class Anime1ListPlugin(Star):
 
     @filter.llm_tool(name="get_anime_list")
     async def get_anime_list(self, event: AstrMessageEvent, use_cache: bool = True, time_range: str = "日", limit: int = 100) -> str:
-        """获取番剧更新列表。
+        """获取番剧剧集更新列表。
 
         Args:
             use_cache(boolean): 是否使用缓存数据，默认true使用缓存快速返回，false则重新获取最新数据
@@ -187,13 +187,13 @@ class Anime1ListPlugin(Star):
         anime_list = self._load_saved_list()
         
         if not anime_list:
-            return "暂无番剧数据，请稍后再试或设置 use_cache=false 重新获取。"
+            return "暂无番剧剧集数据，请稍后再试或设置 use_cache=false 重新获取。"
         
         if time_range and time_range in ["年", "月", "周", "日"]:
             anime_list = self._filter_by_time_range(anime_list, time_range)
         
         if not anime_list:
-            return f"在{time_range}范围内没有更新的番剧。"
+            return f"在{time_range}范围内没有更新的番剧剧集。"
         
         total = len(anime_list)
         if limit != -1 and limit > 0:
@@ -204,14 +204,14 @@ class Anime1ListPlugin(Star):
             line = f"[{item.get('id')}] {item.get('title', '')} - {item.get('status', '')} ({item.get('year', '')}年{item.get('season', '')})"
             result_lines.append(line)
         
-        return f"共 {total} 部番剧，返回 {len(anime_list)} 部：\n" + "\n".join(result_lines)
+        return f"共 {total} 个番剧剧集，返回 {len(anime_list)} 个：\n" + "\n".join(result_lines)
 
     @filter.llm_tool(name="get_watch_url")
     async def get_watch_url(self, event: AstrMessageEvent, anime_id: int) -> str:
-        """通过id获取anime1观看地址。
+        """通过id获取番剧剧集观看地址。
 
         Args:
-            anime_id(number): 番剧ID
+            anime_id(number): 番剧剧集ID
         """
         url = ANIME_WATCH_URL.format(anime_id)
         try:
