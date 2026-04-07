@@ -2,5 +2,5 @@ name: astrbot_plugin_anime1_list
 display_name: Anime1番剧更新列表
 desc: 获取anime1.me番剧更新列表的AstrBot插件
 version: v1.0.0
-author: YourName
+author: zhist
 repo: https://github.com/yourname/astrbot_plugin_anime1_list
