@@ -8,9 +8,8 @@ import aiohttp
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from astrbot.api.event import filter, AstrMessageEvent
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star, StarTools, register
 from astrbot.api import logger
-from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 
 
 ANIME_LIST_URL = "https://anime1.me/animelist.json"
@@ -18,20 +17,21 @@ ANIME_WATCH_URL = "https://anime1.me/?cat={}"
 PLUGIN_NAME = "astrbot_plugin_anime1_list"
 
 
-@register("astrbot_plugin_anime1_list", "YourName", "获取anime1.me番剧更新列表", "1.0.0")
+@register(
+    "astrbot_plugin_anime1_list", "YourName", "获取anime1.me番剧更新列表", "1.0.0"
+)
 class Anime1ListPlugin(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
         self.config = config or {}
         self.scheduler = AsyncIOScheduler()
-        self.data_path = Path(get_astrbot_data_path()) / "plugin_data" / PLUGIN_NAME
-        self.data_path.mkdir(parents=True, exist_ok=True)
+        self.data_path = StarTools.get_data_dir()
         self.list_file = self.data_path / "anime_list.json"
 
     async def initialize(self):
         update_times_str = self.config.get("update_times", "1")
         hours = self._parse_update_times(update_times_str)
-        
+
         for hour in hours:
             self.scheduler.add_job(
                 self._fetch_and_merge_anime_list,
@@ -42,7 +42,7 @@ class Anime1ListPlugin(Star):
                 replace_existing=True,
             )
             logger.info(f"[Anime1List] 已添加定时任务：每天 {hour}:00 更新番剧列表")
-        
+
         self.scheduler.start()
         logger.info("[Anime1List] 插件初始化完成")
 
@@ -97,27 +97,37 @@ class Anime1ListPlugin(Star):
         new_data = await self._fetch_anime_list_from_api()
         if new_data is None:
             return
-        
+
         saved_list = self._load_saved_list()
         saved_map = {item.get("id"): item for item in saved_list if "id" in item}
-        
+
         current_time = datetime.now().isoformat()
         merged_list = []
         new_ids = set()
-        
+
         for item in new_data:
             anime_id = item[0] if len(item) > 0 else None
             if anime_id is None:
                 continue
             new_ids.add(anime_id)
-            
+
             if anime_id in saved_map:
                 saved_item = saved_map[anime_id]
-                saved_item["title"] = item[1] if len(item) > 1 else saved_item.get("title", "")
-                saved_item["status"] = item[2] if len(item) > 2 else saved_item.get("status", "")
-                saved_item["year"] = item[3] if len(item) > 3 else saved_item.get("year", "")
-                saved_item["season"] = item[4] if len(item) > 4 else saved_item.get("season", "")
-                saved_item["extra"] = item[5] if len(item) > 5 else saved_item.get("extra", "")
+                saved_item["title"] = (
+                    item[1] if len(item) > 1 else saved_item.get("title", "")
+                )
+                saved_item["status"] = (
+                    item[2] if len(item) > 2 else saved_item.get("status", "")
+                )
+                saved_item["year"] = (
+                    item[3] if len(item) > 3 else saved_item.get("year", "")
+                )
+                saved_item["season"] = (
+                    item[4] if len(item) > 4 else saved_item.get("season", "")
+                )
+                saved_item["extra"] = (
+                    item[5] if len(item) > 5 else saved_item.get("extra", "")
+                )
                 merged_list.append(saved_item)
             else:
                 anime_entry = {
@@ -130,31 +140,31 @@ class Anime1ListPlugin(Star):
                     "updated_at": current_time,
                 }
                 merged_list.append(anime_entry)
-        
+
         for saved_item in saved_list:
             if saved_item.get("id") not in new_ids:
                 merged_list.append(saved_item)
-        
+
         self._save_list(merged_list)
         logger.info(f"[Anime1List] 番剧列表更新完成，共 {len(merged_list)} 条")
 
     def _filter_by_time_range(self, anime_list: list, time_range: str) -> list:
         if not time_range or time_range not in ["年", "月", "周", "日"]:
             return anime_list
-        
+
         now = datetime.now()
         filtered = []
-        
+
         for item in anime_list:
             updated_at_str = item.get("updated_at", "")
             if not updated_at_str:
                 continue
-            
+
             try:
                 updated_at = datetime.fromisoformat(updated_at_str)
-            except:
+            except ValueError:
                 continue
-            
+
             if time_range == "年":
                 if updated_at.year == now.year:
                     filtered.append(item)
@@ -163,48 +173,58 @@ class Anime1ListPlugin(Star):
                     filtered.append(item)
             elif time_range == "周":
                 week_start = now - timedelta(days=now.weekday())
-                week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+                week_start = week_start.replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
                 if updated_at >= week_start:
                     filtered.append(item)
             elif time_range == "日":
                 if updated_at.date() == now.date():
                     filtered.append(item)
-        
+
         return filtered
 
     @filter.llm_tool(name="get_anime_list")
-    async def get_anime_list(self, event: AstrMessageEvent, use_cache: bool = True, time_range: str = "日", limit: int = 100) -> str:
+    async def get_anime_list(
+        self,
+        event: AstrMessageEvent,
+        use_cache: bool = True,
+        time_range: str = "日",
+        limit: int = 20,
+    ) -> str:
         """获取番剧剧集更新列表。
 
         Args:
             use_cache(boolean): 是否使用缓存数据，默认true使用缓存快速返回，false则重新获取最新数据
             time_range(string): 时间范围过滤，可选值：年、月、周、日、空。默认为日
-            limit(number): 返回数量限制，默认100，-1表示无限制
+            limit(number): 返回数量限制，默认20，-1表示无限制
         """
         if not use_cache:
             await self._fetch_and_merge_anime_list()
-        
+
         anime_list = self._load_saved_list()
-        
+
         if not anime_list:
             return "暂无番剧剧集数据，请稍后再试或设置 use_cache=false 重新获取。"
-        
+
         if time_range and time_range in ["年", "月", "周", "日"]:
             anime_list = self._filter_by_time_range(anime_list, time_range)
-        
+
         if not anime_list:
             return f"在{time_range}范围内没有更新的番剧剧集。"
-        
+
         total = len(anime_list)
         if limit != -1 and limit > 0:
             anime_list = anime_list[:limit]
-        
+
         result_lines = []
         for item in anime_list:
             line = f"[{item.get('id')}] {item.get('title', '')} - {item.get('status', '')} ({item.get('year', '')}年{item.get('season', '')})"
             result_lines.append(line)
-        
-        return f"共 {total} 个番剧剧集，返回 {len(anime_list)} 个：\n" + "\n".join(result_lines)
+
+        return f"共 {total} 个番剧剧集，返回 {len(anime_list)} 个：\n" + "\n".join(
+            result_lines
+        )
 
     @filter.llm_tool(name="get_watch_url")
     async def get_watch_url(self, event: AstrMessageEvent, anime_id: int) -> str:
